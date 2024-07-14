@@ -17,7 +17,9 @@ This is an anchor program to mint NFT collections, Locking them in vault and ena
 # Getting Started
 ## Prerequisites
 Install Anchor
+
 Use version 0.30.0 for compatibility with the program
+
 avm install 0.30.0 && avm use 0.30.0
 
 ## Running the Tests
