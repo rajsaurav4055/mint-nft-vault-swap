@@ -1,5 +1,6 @@
 // use anchor_lang::prelude::*;
 use anchor_lang::prelude::*;
+
 use anchor_spl::{
     associated_token::AssociatedToken,
     metadata::{
@@ -13,10 +14,12 @@ use mpl_token_metadata::{
     types::DataV2,
 };
 
-declare_id!("4Dhr7q3FFEKTvaFyQCutq11chLoU31ejEMt39yvtmH1G");
+declare_id!("DPHqhL6KsxdkNSjKVcJN6h7m92UinnBSQMAoqtir6xQb");
 
 #[program]
 pub mod mint_nft {
+    use anchor_spl::token::{self, Transfer};
+
     use super::*;
 
     pub fn init_nft(
@@ -83,6 +86,87 @@ pub mod mint_nft {
 
         Ok(())
     }
+
+    pub fn create_vault(ctx: Context<CreateVault>, nft_mint: Pubkey) -> Result<()> {
+        let vault = &mut ctx.accounts.vault;
+        vault.owner = *ctx.accounts.owner.to_account_info().key;
+        vault.nft_mint = nft_mint;
+        vault.is_locked = false;
+        Ok(())
+    }
+
+    // pub fn lock_nft(ctx: Context<LockNft>) -> Result<()> {
+    //     let vault = &mut ctx.accounts.vault;
+    //     require!(vault.owner == *ctx.accounts.owner.key, CustomError::Unauthorized);
+    //     require!(!vault.is_locked, CustomError::AlreadyLocked);
+
+    //     // Transfer NFT to vault
+    //     let cpi_accounts = Transfer {
+    //         from: ctx.accounts.nft_token_account.to_account_info(),
+    //         to: ctx.accounts.vault_token_account.to_account_info(),
+    //         authority: ctx.accounts.owner.to_account_info(),
+    //     };
+    //     let cpi_program: AccountInfo = ctx.accounts.token_program.to_account_info();
+    //     let cpi_ctx: CpiContext<Transfer> = CpiContext::new(cpi_program, cpi_accounts);
+    //     token::transfer(cpi_ctx, 1)?;
+
+    //     vault.is_locked = true;
+
+    //     Ok(())
+    // }
+
+    pub fn lock_nft(ctx: Context<LockNft>) -> Result<()> {
+        let vault = &mut ctx.accounts.vault;
+        let _nft = &ctx.accounts.nft;
+
+        require!(vault.owner == *ctx.accounts.owner.key, CustomError::Unauthorized);
+        require!(!vault.is_locked, CustomError::AlreadyLocked);
+
+        // Transfer NFT to vault
+        let cpi_accounts: Transfer = Transfer {
+            from: ctx.accounts.nft_token_account.to_account_info(),
+            to: ctx.accounts.vault_token_account.to_account_info(),
+            authority: ctx.accounts.owner.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::transfer(cpi_ctx, 1)?;
+
+        vault.is_locked = true;
+
+        Ok(())
+    }
+
+    pub fn create_swap(ctx: Context<CreateSwap>, nft_mint: Pubkey, price: u64) -> Result<()> {
+        let swap = &mut ctx.accounts.swap;
+        swap.nft_mint = nft_mint;
+        swap.seller = *ctx.accounts.seller.to_account_info().key;
+        swap.price = price;
+        Ok(())
+    }
+
+    pub fn execute_swap(ctx: Context<ExecuteSwap>) -> Result<()> {
+        let swap = &ctx.accounts.swap;
+
+        require!(ctx.accounts.buyer.to_account_info().lamports() >= swap.price, CustomError::InsufficientFunds);
+
+        // Transfer SOL from buyer to seller
+        **ctx.accounts.buyer.to_account_info().try_borrow_mut_lamports()? -= swap.price;
+        **ctx.accounts.seller.try_borrow_mut_lamports()? += swap.price;
+
+        // Transfer NFT from seller to buyer
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.nft_token_account.to_account_info(),
+            to: ctx.accounts.buyer_token_account.to_account_info(),
+            authority: ctx.accounts.seller.clone(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::transfer(cpi_ctx, 1)?;
+
+        Ok(())
+    }
+
 }
 
 #[derive(Accounts)]
@@ -119,4 +203,99 @@ pub struct InitNFT<'info> {
     pub token_metadata_program: Program<'info, Metadata>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct CreateVault<'info> {
+    #[account(init, payer = owner, space = 8 + 32 + 32 + 1)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+// pub struct LockNft<'info> {
+//     #[account(mut)]
+//     pub vault: Account<'info, Vault>,
+//     /// CHECK: this is created by the seller
+//     #[account(mut)]
+//     pub nft: AccountInfo<'info>,
+//     #[account(mut)]
+//     pub owner: Signer<'info>,
+//     #[account(mut)]
+//     pub nft_token_account: Account<'info, TokenAccount>,
+//     #[account(mut)]
+//     pub vault_token_account: Account<'info, TokenAccount>,
+//     pub token_program: Program<'info, Token>,
+// }
+pub struct LockNft<'info> {
+    #[account(mut)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut)]
+    pub nft: Account<'info, Nft>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    #[account(mut)]
+    pub nft_token_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub vault_token_account: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+}
+
+
+#[derive(Accounts)]
+pub struct CreateSwap<'info> {
+    #[account(init, payer = seller, space = 8 + 32 + 32 + 8)]
+    pub swap: Account<'info, Swap>,
+    #[account(mut)]
+    pub seller: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteSwap<'info> {
+    #[account(mut)]
+    pub swap: Account<'info, Swap>,
+    #[account(mut)]
+    pub buyer: Signer<'info>,
+    /// CHECK: this is created by the seller
+    #[account(mut)]
+    pub seller: AccountInfo<'info>,
+    #[account(mut)]
+    pub nft_token_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub buyer_token_account: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+}
+
+
+#[account]
+pub struct Swap {
+    pub nft_mint: Pubkey,
+    pub seller: Pubkey,
+    pub price: u64,
+}
+
+#[account]
+pub struct Vault {
+    pub owner: Pubkey,
+    pub nft_mint: Pubkey,
+    pub is_locked: bool,
+}
+
+#[account]
+pub struct Nft {
+    pub owner: Pubkey,
+    pub mint: Pubkey,
+}
+
+#[error_code]
+pub enum CustomError {
+    #[msg("Unauthorized.")]
+    Unauthorized,
+    #[msg("NFT is already locked.")]
+    AlreadyLocked,
+    #[msg("Insufficient funds to execute swap.")]
+    InsufficientFunds,
 }
