@@ -117,7 +117,7 @@ pub mod mint_nft {
 
     pub fn lock_nft(ctx: Context<LockNft>) -> Result<()> {
         let vault = &mut ctx.accounts.vault;
-        let _nft = &ctx.accounts.nft;
+        // let _nft = &ctx.accounts.nft;
 
         require!(vault.owner == *ctx.accounts.owner.key, CustomError::Unauthorized);
         require!(!vault.is_locked, CustomError::AlreadyLocked);
@@ -232,8 +232,8 @@ pub struct CreateVault<'info> {
 pub struct LockNft<'info> {
     #[account(mut)]
     pub vault: Account<'info, Vault>,
-    #[account(mut)]
-    pub nft: Account<'info, Nft>,
+    // #[account(mut)]
+    // pub nft: Account<'info, Nft>,
     #[account(mut)]
     pub owner: Signer<'info>,
     #[account(mut)]
