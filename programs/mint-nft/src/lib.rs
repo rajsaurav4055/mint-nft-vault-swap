@@ -9,11 +9,11 @@ use anchor_spl::{
     token::{mint_to, Mint, MintTo, Token, TokenAccount},
 };
 use mpl_token_metadata::{
-    // pda::{find_master_edition_account, find_metadata_account},
+    accounts::{MasterEdition, Metadata as MetadataAccount},
     types::DataV2,
 };
 
-declare_id!("8m1msV8UMZkizuVeurLwMkCBRpucsNmJ8hhhTaF56dCw");
+declare_id!("4Dhr7q3FFEKTvaFyQCutq11chLoU31ejEMt39yvtmH1G");
 
 #[program]
 pub mod mint_nft {
@@ -30,7 +30,7 @@ pub mod mint_nft {
             ctx.accounts.token_program.to_account_info(),
             MintTo {
                 mint: ctx.accounts.mint.to_account_info(),
-                to: ctx.accounts.associated_token_account.to_account_info(),
+                to: ctx.accounts.ata.to_account_info(), //linked the mint account to the associated token account
                 authority: ctx.accounts.signer.to_account_info(),
             },
         );
@@ -99,17 +99,19 @@ pub struct InitNFT<'info> {
     )]
     pub mint: Account<'info, Mint>,
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
         associated_token::mint = mint,
         associated_token::authority = signer
-    )]
-    pub associated_token_account: Account<'info, TokenAccount>,
+        )]
+    pub ata: Account<'info, TokenAccount>,
     /// CHECK: we are about to create this with metaplex
-    #[account(mut)]
+    #[account(mut,
+    address= MetadataAccount::find_pda(&mint.key()).0,)]
     pub metadata_account: AccountInfo<'info>,
     /// CHECK: we are about to create this with metaplex
-    #[account(mut)]
+    #[account(mut,
+    address= MasterEdition::find_pda(&mint.key()).0,)]
     pub master_edition_account: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
