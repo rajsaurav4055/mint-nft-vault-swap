@@ -20,11 +20,14 @@ Install Anchor
 
 Use version 0.30.0 for compatibility with the program
 
+```
 avm install 0.30.0 && avm use 0.30.0
+```
 
 ## Running the Tests
 Execute the tests to see the program in action:
 
-yarn
+```
 anchor build
 anchor test
+```
